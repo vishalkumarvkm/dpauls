@@ -596,7 +596,7 @@ export default function DPaulVoicePanel({ isOpen, onClose, initialDestination }:
                           fare: recommended.fare,
                           seatsLeft: recommended.availableSeats
                         } : null,
-                        instructions: `Found ${liveRes.totalTrips} buses from ${liveRes.originName} to ${liveRes.destinationName} on ${liveRes.travelDate}. Prices range from ${liveRes.priceRangeStr}. Tell the caller the price range, then highlight the cheapest price (${cheapest?.fare} - ${cheapest?.travels}) and recommended AC sleeper (${recommended?.fare} - ${recommended?.travels}). Ask the caller if they prefer the cheapest option, recommended option, or if they want to give a specific price range/budget.`
+                        instructions: `Found ${liveRes.totalTrips} buses from ${liveRes.originName} to ${liveRes.destinationName} on ${liveRes.travelDate}. Prices range from ${liveRes.priceRangeStr}. State the price range, highlight the cheapest price (${cheapest?.fare} - ${cheapest?.travels}) and recommended option (${recommended?.fare} - ${recommended?.travels}), then IMMEDIATELY PIVOT TO LEAD CAPTURE by asking: "Would you like our bus desk to reserve your seat or send the boarding point details to your phone? May I have your full name and 10-digit mobile number?"`
                       }
                     }]
                   });
@@ -635,7 +635,8 @@ export default function DPaulVoicePanel({ isOpen, onClose, initialDestination }:
                         travelDate: travelDate || 'Upcoming',
                         totalPackages: pkgRes.totalPackages,
                         topPackages: topPkgs,
-                        message: `Found ${pkgRes.totalPackages} tour packages for ${pkgRes.destinationName} for travel in ${travelDate || 'the selected period'}. Featured packages: ${topPkgs}`
+                        message: `Found ${pkgRes.totalPackages} tour packages for ${pkgRes.destinationName} for travel in ${travelDate || 'the selected period'}. Featured packages: ${topPkgs}`,
+                        instructions: `Found ${pkgRes.totalPackages} tour packages for ${pkgRes.destinationName}. Featured packages: ${topPkgs}. Share these top packages briefly, then IMMEDIATELY PIVOT TO LEAD CAPTURE by asking: "Would you like our travel advisor to send the complete day-by-day itinerary and customized proposal to your email or WhatsApp? May I get your full name, email, and 10-digit mobile number?"`
                       }
                     }]
                   });
@@ -671,7 +672,8 @@ export default function DPaulVoicePanel({ isOpen, onClose, initialDestination }:
                         duration: `${detailsRes.total_nights} Nights`,
                         destinationsCovered: detailsRes.destinations_covered,
                         inclusions: detailsRes.inclusions,
-                        message: `Package ${detailsRes.name} (${detailsRes.code}): ${detailsRes.total_nights} Nights covering ${detailsRes.destinations_covered}. Key inclusions: ${detailsRes.inclusions?.slice(0, 5).join(', ')}.`
+                        message: `Package ${detailsRes.name} (${detailsRes.code}): ${detailsRes.total_nights} Nights covering ${detailsRes.destinations_covered}. Key inclusions: ${detailsRes.inclusions?.slice(0, 5).join(', ')}.`,
+                        instructions: `Present the package inclusions for ${detailsRes.name} briefly, then IMMEDIATELY PIVOT TO LEAD CAPTURE by asking: "May I have your full name, email, and mobile number so our holiday specialist can email you the detailed itinerary and lock in today's special price?"`
                       }
                     }]
                   });
@@ -719,7 +721,7 @@ export default function DPaulVoicePanel({ isOpen, onClose, initialDestination }:
                           fare: cheapest.fare
                         } : null,
                         topOptions: topFlights,
-                        instructions: `Found ${fltRes.totalFlights} live flights for ${fltRes.originCity} to ${fltRes.destinationCity} on ${fltRes.departureDate}. Price range: ${fltRes.priceRange}. State the price range, highlight the cheapest airline fare (${cheapest?.airlineName} - ${cheapest?.fare}), and ask if they prefer Economy or Business class, or if they have a target budget.`
+                        instructions: `Found ${fltRes.totalFlights} live flights for ${fltRes.originCity} to ${fltRes.destinationCity} on ${fltRes.departureDate}. Price range: ${fltRes.priceRange}. State the price range and cheapest fare, then IMMEDIATELY PIVOT TO LEAD CAPTURE by asking: "Would you like our ticketing desk to hold this seat or text you the flight options? May I have your full name and 10-digit mobile number?"`
                       }
                     }]
                   });
@@ -793,6 +795,19 @@ export default function DPaulVoicePanel({ isOpen, onClose, initialDestination }:
                       sourceAgent: dpaulAgent.id
                     })
                   }).catch(err => console.error("Contact API post fail:", err));
+
+                  fetch("/api/leads", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      name: firstName,
+                      lastName: lastName,
+                      phone: finalPhone,
+                      email: cleanedEmail
+                    })
+                  }).then(res => res.json())
+                    .then(data => console.log("Bitrix Lead API response:", data))
+                    .catch(err => console.error("Leads API post fail:", err));
 
                   sessionRef.current?.sendToolResponse({
                     functionResponses: [{
