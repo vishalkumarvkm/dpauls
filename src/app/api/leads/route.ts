@@ -6,10 +6,17 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     const {
+      title,
       name,
       lastName,
       phone,
       email,
+      travelType,
+      destination,
+      UF_CRM_TRAVEL_TYPE,
+      UF_CRM_DESTINATION,
+      ufCrmTravelType,
+      ufCrmDestination,
     } = body;
 
     if (!name) {
@@ -22,11 +29,17 @@ export async function POST(req: Request) {
       );
     }
 
+    const finalTravelType = travelType || UF_CRM_TRAVEL_TYPE || ufCrmTravelType;
+    const finalDestination = destination || UF_CRM_DESTINATION || ufCrmDestination;
+
     const result = await createBitrixLead({
+      title,
       name,
       lastName,
       phone,
       email,
+      travelType: finalTravelType,
+      destination: finalDestination,
     });
 
     return NextResponse.json({

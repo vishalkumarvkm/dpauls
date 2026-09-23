@@ -1,56 +1,69 @@
 export async function createBitrixLead(data: {
+  title?: string;
   name: string;
   lastName?: string;
   phone?: string;
   email?: string;
+  travelType?: string;
+  destination?: string;
 }) {
   const webhookUrl = process.env.BITRIX_WEBHOOK_URL;
 
   if (!webhookUrl) {
-    throw new Error("BITRIX_WEBHOOK_URL is not configured");
+    throw new Error("BITRIX_WEBHOOK_URL is not configured in environment variables");
   }
 
   const formattedWebhookUrl = webhookUrl.endsWith("/")
     ? webhookUrl
     : `${webhookUrl}/`;
 
-  const params = new URLSearchParams();
-
-  params.append("FIELDS[TITLE]", "Gemini Voice Bot Lead");
-  params.append("FIELDS[NAME]", data.name);
+  const fields: Record<string, any> = {
+    TITLE: data.title || "pravakta.ai Lead",
+    NAME: data.name || "Valued Customer",
+  };
 
   if (data.lastName) {
-    params.append("FIELDS[LAST_NAME]", data.lastName);
+    fields.LAST_NAME = data.lastName;
   }
 
   if (data.email) {
-    params.append("FIELDS[EMAIL][0][VALUE]", data.email);
-    params.append("FIELDS[EMAIL][0][VALUE_TYPE]", "WORK");
+    fields.EMAIL = [{ VALUE: data.email, VALUE_TYPE: "WORK" }];
   }
 
   if (data.phone) {
-    params.append("FIELDS[PHONE][0][VALUE]", data.phone);
-    params.append("FIELDS[PHONE][0][VALUE_TYPE]", "WORK");
+    fields.PHONE = [{ VALUE: data.phone, VALUE_TYPE: "WORK" }];
   }
+
+  if (data.travelType) {
+    fields.UF_CRM_TRAVEL_TYPE = data.travelType;
+  }
+
+  if (data.destination) {
+    fields.UF_CRM_DESTINATION = data.destination;
+  }
+
+  console.log("[Bitrix CRM] Submitting lead payload:", fields);
 
   const response = await fetch(
     `${formattedWebhookUrl}crm.lead.add.json`,
     {
       method: "POST",
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Type": "application/json",
       },
-      body: params.toString(),
+      body: JSON.stringify({ fields }),
     }
   );
 
   const result = await response.json();
 
   if (!response.ok || result.error) {
+    console.error("[Bitrix CRM Error]:", result);
     throw new Error(
-      result.error_description || "Failed to create Bitrix lead"
+      result.error_description || result.error || "Failed to create Bitrix lead"
     );
   }
 
+  console.log("[Bitrix CRM Success] Lead ID created:", result.result);
   return result;
 }

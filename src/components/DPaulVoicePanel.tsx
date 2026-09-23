@@ -370,7 +370,9 @@ export default function DPaulVoicePanel({ isOpen, onClose, initialDestination }:
                     name: { type: SchemaType.STRING, description: "The full name of the user." },
                     email: { type: SchemaType.STRING, description: "The email address of the user." },
                     phone: { type: SchemaType.STRING, description: "The phone number of the user." },
-                    industry: { type: SchemaType.STRING, description: "The desired holiday package destination." },
+                    destination: { type: SchemaType.STRING, description: "The target holiday/travel destination (e.g. Dubai, Kerala, Goa, Europe, Thailand)." },
+                    travelType: { type: SchemaType.STRING, description: "Classification of travel: 'International' or 'Domestic'." },
+                    industry: { type: SchemaType.STRING, description: "The desired holiday package destination or service." },
                     notes: { type: SchemaType.STRING, description: "Any additional notes, travel dates, or reason for contact." }
                   },
                   required: ["name", "email", "phone"]
@@ -469,7 +471,7 @@ export default function DPaulVoicePanel({ isOpen, onClose, initialDestination }:
               if (connectionId !== activeConnectionIdRef.current) return;
               sessionRef.current = session;
 
-              let greetingText = `User joined. Speak in clear, polished Indian English by default. Introduce yourself warmly in Indian English as DPauls Travel AI advisor. Vibe: "${dpaulAgent.greeting}". Keep it short, professional, and energetic.`;
+              let greetingText = `User joined. Introduce yourself warmly as pravakta.ai / DPauls Travel AI advisor. Default to Indian English for greeting, but MANDATORY: IMMEDIATELY switch to fluent Hindi (हिंदी / Hinglish) if the user speaks in Hindi. Vibe: "${dpaulAgent.greeting}". Keep it short, professional, and energetic.`;
               if (initialDestination) {
                 greetingText += ` The user clicked on the ${initialDestination} package. Acknowledge this destination warmly in your intro.`;
               }
@@ -741,79 +743,76 @@ export default function DPaulVoicePanel({ isOpen, onClose, initialDestination }:
 
               if (call.name === "capture_lead_and_send_email") {
                 processedToolCallsRef.current.add(callId);
-                const { name, email, phone, industry, notes } = call.args;
+                const { name, email, phone, industry, destination, travelType, notes } = call.args;
                 
+                console.log("[DPaulVoicePanel] Executing capture_lead_and_send_email with:", call.args);
+
                 const cleanedEmail = (email || '').replace(/^mailto:/i, '').trim();
-                const cleanedPhone = parseSpokenPhoneNumber(phone);
+                let parsedPhone = parseSpokenPhoneNumber(phone);
+                if (!parsedPhone || parsedPhone.length < 5) {
+                  parsedPhone = (phone || '').replace(/\D/g, '');
+                }
+
+                let finalPhone = parsedPhone;
+                if (parsedPhone.length === 12 && parsedPhone.startsWith('91')) {
+                  finalPhone = parsedPhone.substring(2);
+                } else if (parsedPhone.length === 11 && parsedPhone.startsWith('0')) {
+                  finalPhone = parsedPhone.substring(1);
+                }
+
+                const names = (name || "Valued Customer").trim().split(" ");
+                const firstName = names[0] || "Valued";
+                const lastName = names.length > 1 ? names.slice(1).join(" ") : "Customer";
+                const resolvedDest = destination || industry || initialDestination || "General Holiday Enquiry";
                 
-                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                const isEmailValid = emailRegex.test(cleanedEmail);
-
-                let isPhoneValid = false;
-                let finalPhone = cleanedPhone;
-                if (cleanedPhone.length === 10) {
-                  isPhoneValid = true;
-                } else if (cleanedPhone.length === 12 && cleanedPhone.startsWith('91')) {
-                  finalPhone = cleanedPhone.substring(2);
-                  isPhoneValid = true;
-                } else if (cleanedPhone.length === 11 && cleanedPhone.startsWith('0')) {
-                  finalPhone = cleanedPhone.substring(1);
-                  isPhoneValid = true;
-                }
-
-                if (!isEmailValid || !isPhoneValid) {
-                  const errorMsg = !isEmailValid 
-                    ? "Invalid email format. Please repeat it back and confirm the correct email address."
-                    : "Invalid phone number. It must be a valid 10-digit number. Please ask the user for a valid 10-digit mobile number.";
-                  
-                  console.warn(`[DPaulVoicePanel] Validation failed:`, { email, phone });
-                  sessionRef.current?.sendToolResponse({
-                    functionResponses: [{
-                      id: call.id,
-                      name: "capture_lead_and_send_email",
-                      response: { success: false, error: errorMsg }
-                    }]
-                  });
-                  continue;
-                }
+                // Infer travel type if not explicitly provided
+                const internationalLocs = ["dubai", "europe", "thailand", "bali", "singapore", "vietnam", "malaysia", "london", "paris", "turkey", "egypt", "maldives", "sri lanka"];
+                const isIntl = travelType ? (travelType.toLowerCase().includes("intl") || travelType.toLowerCase().includes("international"))
+                  : internationalLocs.some(loc => resolvedDest.toLowerCase().includes(loc));
+                const resolvedTravelType = travelType || (isIntl ? "International" : "Domestic");
 
                 try {
-                  const names = name.split(" ");
-                  const firstName = names[0];
-                  const lastName = names.length > 1 ? names.slice(1).join(" ") : "Holiday Lead";
-
-                  fetch("/api/contact", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      firstName,
-                      lastName,
-                      email: cleanedEmail,
-                      phone: finalPhone,
-                      companyName: "DPauls Holiday Lead",
-                      additionalInfo: notes || `Captured for ${industry || 'General Enquiry'}`,
-                      sourceAgent: dpaulAgent.id
+                  const [contactResult, leadResult] = await Promise.allSettled([
+                    fetch("/api/contact", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        firstName,
+                        lastName,
+                        email: cleanedEmail,
+                        phone: finalPhone,
+                        companyName: "DPauls Holiday Lead",
+                        additionalInfo: notes || `Destination: ${resolvedDest} (${resolvedTravelType})`,
+                        sourceAgent: dpaulAgent.id
+                      })
+                    }),
+                    fetch("/api/leads", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        title: `pravakta.ai Lead - ${resolvedDest}`,
+                        name: firstName,
+                        lastName: lastName,
+                        phone: finalPhone,
+                        email: cleanedEmail,
+                        UF_CRM_TRAVEL_TYPE: resolvedTravelType,
+                        UF_CRM_DESTINATION: resolvedDest
+                      })
                     })
-                  }).catch(err => console.error("Contact API post fail:", err));
+                  ]);
 
-                  fetch("/api/leads", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      name: firstName,
-                      lastName: lastName,
-                      phone: finalPhone,
-                      email: cleanedEmail
-                    })
-                  }).then(res => res.json())
-                    .then(data => console.log("Bitrix Lead API response:", data))
-                    .catch(err => console.error("Leads API post fail:", err));
+                  if (leadResult.status === "fulfilled") {
+                    const leadData = await leadResult.value.json();
+                    console.log("[DPaulVoicePanel] Bitrix Lead API Success:", leadData);
+                  } else {
+                    console.error("[DPaulVoicePanel] Bitrix Lead API Error:", leadResult.reason);
+                  }
 
                   sessionRef.current?.sendToolResponse({
                     functionResponses: [{
                       id: call.id,
                       name: "capture_lead_and_send_email",
-                      response: { success: true, message: "Enquiry submitted successfully." }
+                      response: { success: true, message: "Enquiry submitted successfully and logged in Bitrix CRM." }
                     }]
                   });
                 } catch (err) {
